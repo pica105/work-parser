@@ -10,5 +10,13 @@ __pycache__/
 data/
 sessions/
 *.db
+*.db-shm
+*.db-wal
 *.session
+*.session-shm
+*.session-wal
 *.session-journal
+
+# ─── Персональный профиль для автооткликов Kwork ───
+# Создай profile.md из profile.example.md и заполни своими данными
+profile.md

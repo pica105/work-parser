@@ -13,13 +13,6 @@ CONTACT_RE = re.compile(
 )
 
 
-def truncate(text: str, limit: int = 800) -> str:
-    cleaned = re.sub(r"\s+", " ", text).strip()
-    if len(cleaned) <= limit:
-        return cleaned
-    return cleaned[:limit].rstrip() + "..."
-
-
 def extract_contacts(text: str) -> tuple[str, ...]:
     contacts: list[str] = []
     for match in CONTACT_RE.finditer(text):
@@ -40,15 +33,15 @@ def format_lead(source: Source, lead: LeadRecord) -> str:
     except ValueError:
         pass
 
-    excerpt = html.escape(truncate(lead.text))
-
     link_html = (
-        f'\n<a href="{html.escape(lead.link)}">\u041f\u043e\u0441\u043c\u043e\u0442\u0440\u0435\u0442\u044c \u0432 Telegram</a>'
+        f'<a href="{html.escape(lead.link)}">Открыть пост в Telegram</a>'
     )
 
-    return (
-        f'<b>\u041b\u0438\u0434</b> [score {lead.score}]  \u2014  <i>{html.escape(source.title)}</i>\n'
-        f'\u250c {excerpt}\n'
-        f'\u2514 {html.escape(date_text)}  \u2022  {keywords}'
-        f'{link_html}'
-    )
+    lines = [
+        f'\U0001f4cc <b>Лид</b> [score {lead.score}] \u2014 <i>{html.escape(source.title)}</i>',
+        f'\U0001f4c5 {html.escape(date_text)}',
+        f'\U0001f4de {contact_line}',
+        f'\U0001f3f7 {keywords}',
+        f'\U0001f517 {link_html}',
+    ]
+    return "\n".join(lines)

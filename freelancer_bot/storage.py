@@ -3,13 +3,15 @@ from __future__ import annotations
 import json
 import sqlite3
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
-from typing import Iterable
+from typing import Optional
 
 
-def utc_now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+MSK = timezone(timedelta(hours=3))
+
+def msk_now() -> str:
+    return datetime.now(MSK).isoformat()
 
 
 @dataclass(frozen=True)
@@ -51,6 +53,15 @@ class Storage:
                 created_at TEXT NOT NULL,
                 UNIQUE(source, message_id)
             );
+
+            CREATE TABLE IF NOT EXISTS kwork_offers (
+                project_id TEXT PRIMARY KEY,
+                title TEXT NOT NULL,
+                description TEXT NOT NULL,
+                price INTEGER NOT NULL,
+                offer_text TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            );
             """
         )
         self._conn.commit()
@@ -65,17 +76,9 @@ class Storage:
             VALUES(?, ?)
             ON CONFLICT(chat_id) DO NOTHING
             """,
-            (chat_id, utc_now()),
+            (chat_id, msk_now()),
         )
         self._conn.commit()
-
-    def remove_subscriber(self, chat_id: int) -> None:
-        self._conn.execute("DELETE FROM subscribers WHERE chat_id = ?", (chat_id,))
-        self._conn.commit()
-
-    def subscribers(self) -> list[int]:
-        rows = self._conn.execute("SELECT chat_id FROM subscribers ORDER BY created_at").fetchall()
-        return [int(row["chat_id"]) for row in rows]
 
     def record_or_should_retry(self, lead: LeadRecord) -> bool:
         existing = self._conn.execute(
@@ -101,7 +104,7 @@ class Storage:
                 lead.score,
                 json.dumps(list(lead.keywords), ensure_ascii=False),
                 lead.message_date,
-                utc_now(),
+                msk_now(),
             ),
         )
         self._conn.commit()
@@ -110,7 +113,55 @@ class Storage:
     def mark_notified(self, source: str, message_id: int) -> None:
         self._conn.execute(
             "UPDATE leads SET notified_at = ? WHERE source = ? AND message_id = ?",
-            (utc_now(), source, message_id),
+            (msk_now(), source, message_id),
+        )
+        self._conn.commit()
+
+    def save_kwork_offer_draft(
+        self,
+        project_id: str,
+        title: str,
+        description: str,
+        price: int,
+        offer_text: str,
+    ) -> None:
+        """Save or update a Kwork offer draft."""
+        self._conn.execute(
+            """
+            INSERT INTO kwork_offers(project_id, title, description, price, offer_text, created_at)
+            VALUES(?, ?, ?, ?, ?, ?)
+            ON CONFLICT(project_id) DO UPDATE SET
+                title=excluded.title,
+                description=excluded.description,
+                price=excluded.price,
+                offer_text=excluded.offer_text,
+                created_at=excluded.created_at
+            """,
+            (project_id, title, description, price, offer_text, msk_now()),
+        )
+        self._conn.commit()
+
+    def get_kwork_offer_draft(self, project_id: str) -> Optional[dict]:
+        """Get a saved Kwork offer draft by project ID."""
+        row = self._conn.execute(
+            "SELECT * FROM kwork_offers WHERE project_id = ?",
+            (project_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        return {
+            "project_id": row["project_id"],
+            "title": row["title"],
+            "description": row["description"],
+            "price": int(row["price"]),
+            "offer_text": row["offer_text"],
+        }
+
+    def delete_kwork_offer_draft(self, project_id: str) -> None:
+        """Delete a Kwork offer draft after it's been sent."""
+        self._conn.execute(
+            "DELETE FROM kwork_offers WHERE project_id = ?",
+            (project_id,),
         )
         self._conn.commit()
 
@@ -122,13 +173,13 @@ class Storage:
         subscriber_count = self._conn.execute("SELECT COUNT(*) AS count FROM subscribers").fetchone()[
             "count"
         ]
+        kwork_drafts_count = self._conn.execute(
+            "SELECT COUNT(*) AS count FROM kwork_offers"
+        ).fetchone()["count"]
         return {
             "leads": int(lead_count),
             "pending": int(pending_count),
             "subscribers": int(subscriber_count),
+            "kwork_drafts": int(kwork_drafts_count),
         }
-
-    def add_initial_subscribers(self, chat_ids: Iterable[int]) -> None:
-        for chat_id in chat_ids:
-            self.add_subscriber(chat_id)
 
