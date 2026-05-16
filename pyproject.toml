@@ -12,7 +12,7 @@ description = "Telegram bot that monitors freelance channels and sends filtered 
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
-authors = [{ name = "Egor Andrienko" }]
+authors = [{ name = "pica105" }]
 dependencies = [
     "telethon>=1.35,<2",
     "python-dotenv>=1.0,<2",
@@ -21,7 +21,7 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/Egor01KKK/telegram-freelance-lead-bot"
+Homepage = "https://github.com/pica105/work-parser/"
 
 [project.scripts]
 telegram-freelance-lead-bot = "freelancer_bot.app:cli"
