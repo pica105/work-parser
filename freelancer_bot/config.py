@@ -42,7 +42,7 @@ class RuntimeConfig:
     log_level: str
     admin_telegram_id: int
     csrf_user_token: str
-    kwork_auth_cookies: str
+    kwork_rorssqihek: str
     openrouter_api_key: str
     openrouter_model: str
     kwork_criteria: list[str]
@@ -92,7 +92,7 @@ class RuntimeConfig:
         log_level=os.getenv("LOG_LEVEL", "INFO").upper(),
         admin_telegram_id=int(os.getenv("ADMIN_TELEGRAM_ID", "0")),
         csrf_user_token=os.getenv("CSRF_USER_TOKEN", ""),
-        kwork_auth_cookies=os.getenv("KWORK_AUTH_COOKIES", ""),
+        kwork_rorssqihek=os.getenv("KWORK_RORSSQIHEK", ""),
         openrouter_api_key=os.getenv("OPENROUTER_API_KEY", ""),
         openrouter_model=os.getenv("OPENROUTER_MODEL", "openai/gpt-4o-mini"),
         kwork_criteria=_parse_kwork_criteria(os.getenv("KWORK_CRITERIA", "")),

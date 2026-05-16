@@ -40,7 +40,7 @@ Telegram-каналы (28 шт.)
 | `OPENROUTER_API_KEY` | Ключ из [openrouter.ai/keys](https://openrouter.ai/keys) |
 | `OPENROUTER_MODEL` | Модель, по умолчанию `openai/gpt-4o-mini` |
 | `CSRF_USER_TOKEN` | CSRF-токен с kwork.ru (Cookies → `csrf_user_token`) |
-| `KWORK_AUTH_COOKIES` | Куки авторизации Kwork (формат: `uad=...; RORSSQIHEK=...`) |
+| `KWORK_RORSSQIHEK` | Кука `RORSSQIHEK` (только если ошибка авторизации) |
 | `KWORK_CRITERIA` | Критерии отбора проектов через запятую (см. Kwork: pipeline) |
 
 ## Команды бота

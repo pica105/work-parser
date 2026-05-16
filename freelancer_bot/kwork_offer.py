@@ -318,6 +318,7 @@ async def generate_offer_text(
         "- Без приветствий, имени, возраста\n"
         "- Без упоминания библиотек, языков, технологий\n"
         "- Отправь только текст отклика"
+        "- Получатель отлкика не знает обо мне ничего, в отлике напиши информацию обо мне которая будет важна этому заказчику"
     )
 
     try:
@@ -354,7 +355,7 @@ async def send_kwork_offer(
     description: str,
     price: int,
     csrf_token: str,
-    auth_cookies: str = "",
+    rorssqihek: str = "",
 ) -> bool:
     """Send offer to Kwork via API."""
     if not csrf_token:
@@ -381,10 +382,10 @@ async def send_kwork_offer(
     body += _part("kwork_name", f"<div>{title}</div>")
     body += f"--{boundary}--\r\n"
 
-    # Формируем cookies: csrf_user_token + дополнительные auth-куки
+    # Формируем cookies: csrf_user_token + RORSSQIHEK (если есть)
     cookies = f"csrf_user_token={csrf_token}"
-    if auth_cookies:
-        cookies += f"; {auth_cookies}"
+    if rorssqihek:
+        cookies += f"; RORSSQIHEK={rorssqihek}"
 
     headers = {
         "accept": "application/json, text/plain, */*",

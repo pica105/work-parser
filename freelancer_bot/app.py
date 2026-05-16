@@ -102,7 +102,7 @@ class LeadBot:
         self._queue: asyncio.Queue[tuple[LeadRecord, Source]] = asyncio.Queue()
         self._running = False
         self._csrf_token = config.csrf_user_token
-        self._kwork_auth_cookies = config.kwork_auth_cookies
+        self._kwork_rorssqihek = config.kwork_rorssqihek
         self._kwork_handle = "@freelance_dev_work"
         self._openrouter_api_key = config.openrouter_api_key
         self._openrouter_model = config.openrouter_model
@@ -439,7 +439,7 @@ class LeadBot:
                 description=draft["offer_text"],
                 price=draft["price"],
                 csrf_token=self._csrf_token,
-                auth_cookies=self._kwork_auth_cookies,
+                rorssqihek=self._kwork_rorssqihek,
             )
 
             if success:
