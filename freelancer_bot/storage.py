@@ -81,12 +81,16 @@ class Storage:
         self._conn.commit()
 
     def record_or_should_retry(self, lead: LeadRecord) -> bool:
+        """
+        Записывает новый лид в БД.
+        Если лид уже существует (даже без notified_at) — не отправляем повторно.
+        """
         existing = self._conn.execute(
-            "SELECT notified_at FROM leads WHERE source = ? AND message_id = ?",
+            "SELECT 1 FROM leads WHERE source = ? AND message_id = ?",
             (lead.source, lead.message_id),
         ).fetchone()
         if existing:
-            return existing["notified_at"] is None
+            return False  # Уже есть в БД — не отправляем снова
 
         self._conn.execute(
             """

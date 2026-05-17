@@ -60,7 +60,8 @@ from .sources import Source, enabled_sources
 from .storage import LeadRecord, Storage
 from .kwork_offer import (
     extract_kwork_id,
-    fetch_kwork_project,
+    extract_kwork_price_range,
+    calc_kwork_final_price,
     check_kwork_criteria,
     generate_offer_text,
     send_kwork_offer,
@@ -156,16 +157,24 @@ class LeadBot:
     async def _handle_kwork_project(self, source: Source, message: Message, text: str) -> None:
         """
         Обрабатывает Kwork-проект:
-        1. Извлекает ID проекта
-        2. Получает данные со страницы Kwork
-        3. Проверяет на соответствие критериям backend/API
-        4. Если подходит — генерирует отклик, сохраняет черновик и отправляет уведомление с кнопкой
-        5. Если не подходит — отправляет простое уведомление
+        1. Проверяет свежесть сообщения (<10 мин)
+        2. Извлекает ID, цену, описание из сообщения
+        3. Проверяет критерии — если не подходит, пропускает (без уведомления)
+        4. Генерирует отклик, сохраняет черновик
+        5. Отправляет уведомление с кнопкой (без текста отклика в теле)
         """
+        # 1. Проверка свежести сообщения (макс 10 минут)
+        if message.date:
+            msg_date = message.date.replace(tzinfo=timezone.utc) if message.date.tzinfo is None else message.date
+            now = datetime.now(timezone.utc)
+            if now - msg_date > timedelta(minutes=10):
+                LOGGER.info("Message too old (>10 min), skipping")
+                return
+
         if not self._csrf_token:
             LOGGER.warning("CSRF_USER_TOKEN not set — Kwork offers disabled")
 
-        # Создаём LeadRecord для базовой записи в БД
+        # Создаём LeadRecord для ID extraction и хранения
         link = f"https://t.me/{source.username}/{message.id}"
         message_date = _msk_timestamp(message.date)
         lead = LeadRecord(
@@ -178,7 +187,7 @@ class LeadBot:
             message_date=message_date,
         )
 
-        # 1. Извлекаем ID проекта Kwork
+        # 2. Извлекаем ID проекта Kwork
         project_id = extract_kwork_id(lead, source, message)
         if not project_id:
             LOGGER.info("No Kwork project ID found in message from %s", source.handle)
@@ -198,35 +207,28 @@ class LeadBot:
             LOGGER.info("Found existing draft for project %s", project_id)
             await self._send_kwork_notification_with_button(
                 project_id, existing_draft["title"],
-                existing_draft["offer_text"],
                 existing_draft["price"],
             )
             return
 
-        # 2. Получаем данные со страницы Kwork
-        project = await fetch_kwork_project(project_id)
-        if not project:
-            LOGGER.warning("Could not fetch Kwork project %s, sending simple notification", project_id)
-            await self._send_simple_kwork_notification(project_id, f"Project #{project_id}", 0)
-            return
+        # 3. Извлекаем данные из сообщения (без fetch страницы)
+        title = text.split('\n')[0][:100] if text else f"Project #{project_id}"
+        description = text  # используем весь текст сообщения как описание
+        min_price, max_price = extract_kwork_price_range(text)
+        price = calc_kwork_final_price(min_price, max_price)
+        LOGGER.info("Kwork project %s: budget range %s-%s, final price %s", project_id, min_price, max_price, price)
 
-        title = project["title"]
-        description = project["description"]
-        price = project["budget_min"]
-
-        # 3. Проверяем на соответствие критериям backend/API
+        # 4. Проверяем критерии (по тексту сообщения) — если не подходит, просто пропускаем
         if not check_kwork_criteria(title, description, criteria=self.config.kwork_criteria):
-            LOGGER.info("Kwork project %s does not match backend/API criteria, sending simple notification", project_id)
-            await self._send_simple_kwork_notification(project_id, title, price)
+            LOGGER.info("Kwork project %s does not match criteria, skipping (no notification)", project_id)
             return
 
         LOGGER.info("Kwork project %s matches criteria, generating offer...", project_id)
 
-        # 4. Генерируем отклик через OpenRouter
+        # 5. Генерируем отклик через OpenRouter
         profile = load_profile()
         if not profile:
             LOGGER.warning("Profile is empty, cannot generate offer")
-            await self._send_simple_kwork_notification(project_id, title, price)
             return
 
         offer_text = await generate_offer_text(
@@ -239,42 +241,22 @@ class LeadBot:
         )
         if not offer_text:
             LOGGER.warning("Failed to generate offer text for project %s", project_id)
-            await self._send_simple_kwork_notification(project_id, title, price)
             return
 
-        # 5. Сохраняем черновик в БД
+        # 6. Сохраняем черновик в БД
         self.storage.save_kwork_offer_draft(project_id, title, description, price, offer_text)
         LOGGER.info("Saved offer draft for project %s", project_id)
 
-        # 6. Отправляем уведомление с кнопкой
-        await self._send_kwork_notification_with_button(project_id, title, offer_text, price)
+        # 7. Отправляем уведомление с кнопкой (без текста отклика в теле)
+        await self._send_kwork_notification_with_button(project_id, title, price)
 
-    async def _send_simple_kwork_notification(self, project_id: str, title: str, price: int) -> None:
-        """Отправляет простое уведомление о Kwork-проекте (без отклика)."""
-        text = (
-            f"📋 <b>Kwork-проект (не подходит под критерии)</b>\n"
-            f"Проект: <b>{html.escape(title[:100])}</b>\n"
-            f"Бюджет: <b>{price} руб.</b>\n"
-            f"<a href=\"https://kwork.ru/projects/{project_id}/view\">Открыть на Kwork</a>"
-        )
-        try:
-            await self.bot_client.send_message(
-                self._admin_chat_id,
-                text,
-                parse_mode="html",
-                link_preview=False,
-            )
-        except Exception as send_err:
-            LOGGER.warning("Failed to send simple Kwork notification: %s", send_err)
-
-    async def _send_kwork_notification_with_button(self, project_id: str, title: str, offer_text: str, price: int) -> None:
-        """Отправляет уведомление о Kwork-проекте с inline-кнопкой 'авто-отклик'."""
+    async def _send_kwork_notification_with_button(self, project_id: str, title: str, price: int) -> None:
+        """Отправляет уведомление о Kwork-проекте с inline-кнопкой 'авто-отклик' (без текста отклика в теле)."""
         text = (
             f"📋 <b>Kwork-проект (подходит под критерии)</b>\n"
             f"ID: <code>{project_id}</code>\n"
             f"Проект: <b>{html.escape(title[:100])}</b>\n"
-            f"Бюджет: <b>{price} руб.</b>\n\n"
-            f"<b>Сгенерированный отклик:</b>\n{html.escape(offer_text)}\n\n"
+            f"Бюджет: <b>{price} руб.</b>\n"
             f"<a href=\"https://kwork.ru/projects/{project_id}/view\">Открыть на Kwork</a>"
         )
         buttons = [[Button.inline("🤖 Авто-отклик", data=f"kwork:{project_id}")]]

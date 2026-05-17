@@ -45,8 +45,26 @@ SOURCES: list[Source] = [
     Source("@geekjobs", "Job in IT&Digital", "эксклюзивные IT-вакансии, в том числе проектные и фриланс"),
     Source("@vacansii_sz", "Вакансии Северо-Запад", "проверенные вакансии, много удалёнки и фриланса"),
     Source("@it_vac", "IT Jobs | вакансии, фриланс", "IT-вакансии в штат и на фриланс"),
-    Source("@jc_it", "Jobs Code: IT-вакансии", "IT-вакансии, включая проектную работу и фриланс"),
     Source("@fordev", "Вакансии Backend/Frontend", "вакансии и заказы для backend и frontend разработчиков"),
+    Source("@backend_jobs", "Backend Job Offers", "удалённые backend вакансии и проекты"),
+    Source("@sysadmin_rabota", "Sysadmin | DevOps Работа", "вакансии системных администраторов и DevOps"),
+    Source("@devops_jobs", "DevOps Jobs", "вакансии и проекты по DevOps, CI/CD, K8s"),
+    Source("@nodejs_jobs", "Node.js Jobs", "вакансии Node.js, TypeScript backend"),
+    Source("@php_jobs", "PHP Jobs RU", "заказы и вакансии PHP разработчикам"),
+    Source("@frilanser_vacansii", "ФРИЛАНСЕР: удалённая работа", "задачи для исполнителей, есть IT и backend"),
+    Source("@Koteyka_Freelancer", "Фриланс Котики", "живое сообщество с заказами, есть техспецы"),
+    Source("@frilanc", "Фриланс удалёнка работа", "чат обмена откликами, быстрые перехваты задач"),
+    Source("@freelance_birzha", "Freelance Биржа", "проекты с хорошими бюджетами, разработка и IT"),
+    Source("@habr_career", "Habr Career Jobs", "вакансии Хабр Карьера, remote и фриланс"),
+    Source("@dou_jobs", "DOU Jobs", "DOU.ua: dev, DevOps, backend позиции"),
+    # ── Международные (EN) ──
+    Source("@remotejobss", "Remote Jobs (worldwide)", "english-only worldwide: DevOps, backend, fs"),
+    Source("@workewco", "Workew Remote Jobs", "curated remote jobs worldwide incl. DevOps"),
+    Source("@developer_jobs", "Developer Jobs", "dev jobs worldwide, remote-first"),
+    Source("@remoteok", "RemoteOK Telegram", "mirror of remoteok.com — daily remote jobs"),
+    Source("@KubeCareers", "KubeCareers", "hand-picked Kubernetes & cloud-native jobs"),
+    Source("@java_remote_jobs", "Java Remote Jobs", "Java Spring remote engineering roles"),
+    Source("@thedevs", "The Devs", "large international dev community, jobs feed"),
 ]
 
 

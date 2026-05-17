@@ -16,12 +16,104 @@ from .storage import LeadRecord
 
 LOGGER = logging.getLogger("freelancer_bot.kwork")
 
+
+# Regex для извлечения цен из текста сообщения
+# Поддерживает: 30,000 ₽, 15000 руб, 50 000 ₽, 1200$
+KWORK_PRICE_RE = re.compile(r"(\d[\d,\s]*)\s*(?:₽|руб|\$|eur|usd)", re.IGNORECASE)
+# Fallback: ищем число после слов Бюджет/От/Цена (без валюты)
+KWORK_FALLBACK_RE = re.compile(
+    r"(?:Бюджет|Цена|Стоимость|Price|Budget|От|от)[:\s]*(\d[\d,\s]*)", re.IGNORECASE
+)
+# Паттерн для диапазона: "От 30,000 ₽ до 90,000 ₽", "Бюджет: 15000 - 30000", "1000-2000"
+KWORK_RANGE_RE = re.compile(
+    r"(?:(?:От|от)\s*)?(\d[\d,\s]*)(?:\s*(?:₽|руб|\$))?\s*(?:до|-|–|—)\s*(\d[\d,\s]*)",
+    re.IGNORECASE,
+)
+
+
+def _parse_price(raw: str) -> int | None:
+    """Очищает строку цены от разделителей и парсит в int."""
+    cleaned = raw.replace(",", "").replace(" ", "")
+    if cleaned and cleaned.isdigit():
+        return int(cleaned)
+    return None
+
+
+def extract_kwork_price(text: str) -> int:
+    """Извлекает первую цену из текста сообщения Kwork.
+    Ищет число перед ₽/руб (приоритетно), затем числа рядом со словом Бюджет/От.
+    """
+    # 1. Ищем первое число перед валютой (₽, руб, $)
+    match = KWORK_PRICE_RE.search(text)
+    if match:
+        price = _parse_price(match.group(1))
+        if price and 100 <= price <= 10_000_000:
+            return price
+
+    # 2. Fallback: ищем число после слов Бюджет/От/Цена (даже без валюты)
+    match = KWORK_FALLBACK_RE.search(text)
+    if match:
+        price = _parse_price(match.group(1))
+        if price and 100 <= price <= 10_000_000:
+            return price
+
+    return 5000  # fallback
+
+
+def extract_kwork_price_range(text: str) -> tuple[int, int]:
+    """Извлекает минимальную и максимальную цену из сообщения Kwork.
+    Возвращает (min_price, max_price).
+    Приоритет: диапазон "От X до Y" → все найденные цены → fallback 5000.
+    """
+    # 1. Ищем явный диапазон "От X до Y", "X - Y" или "X- Y"
+    range_match = KWORK_RANGE_RE.search(text)
+    if range_match:
+        min_p = _parse_price(range_match.group(1))
+        max_p = _parse_price(range_match.group(2))
+        if min_p and max_p and min_p > 0 and max_p > 0:
+            return (min(min_p, max_p), max(min_p, max_p))
+
+    # 2. Ищем все цены с валютой через finditer
+    prices = []
+    seen = set()
+    for match in KWORK_PRICE_RE.finditer(text):
+        p = _parse_price(match.group(1))
+        if p and 100 <= p <= 10_000_000 and p not in seen:
+            prices.append(p)
+            seen.add(p)
+
+    # 3. Если < 2 цен — добавляем числа после Бюджет/От/Цена
+    if len(prices) < 2:
+        for match in KWORK_FALLBACK_RE.finditer(text):
+            p = _parse_price(match.group(1))
+            if p and 100 <= p <= 10_000_000 and p not in seen:
+                prices.append(p)
+                seen.add(p)
+
+    if len(prices) >= 2:
+        return (min(prices), max(prices))
+    elif len(prices) == 1:
+        return (prices[0], prices[0])
+
+    return (5000, 5000)  # fallback
+
+
+def calc_kwork_final_price(min_price: int, max_price: int) -> int:
+    """Рассчитывает финальную цену отклика:
+    - Берёт минимальную цену + 10% от максимальной
+    - Если результат превышает максимальный бюджет заказчика — использует минимальную
+    """
+    final = min_price + max_price // 10
+    if final > max_price:
+        return min_price
+    return final
+
 PROFILE_PATH = Path("profile.md")
 
 # Kwork project ID from URL like https://kwork.ru/projects/3175656?ref=...
 KWORK_PROJECT_RE = re.compile(r"kwork\.ru/projects/(\d+)")
 
-# Budget patterns — ищем в блоке с ценой проекта
+# Budget patterns — ищем в блоке с ценой проекта (только для fetch_kwork_project)
 BUDGET_RE = re.compile(
     r"(?:от\s*)?(\d[\d\s]*)\s*(?:руб|₽|\$|eur|usd)",
     re.IGNORECASE,
