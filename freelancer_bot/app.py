@@ -15,10 +15,11 @@ from dotenv import load_dotenv
 from telethon import TelegramClient, events, Button
 from telethon.errors import RPCError
 from telethon.tl.custom.message import Message
+from telethon.tl.types import User
 
 from .config import RuntimeConfig
 from .filters import KEYWORDS, STOP_WORDS, match_text
-from .formatting import format_lead
+from .formatting import format_lead, extract_contacts
 MSK = timezone(timedelta(hours=3))
 
 
@@ -109,6 +110,8 @@ class LeadBot:
         self._openrouter_model = config.openrouter_model
         self._ai_basic_url = config.ai_basic_url
         self._kwork_offered: set[str] = set()
+        # Время последнего отправленного Kwork-уведомления (rate limit 10 мин)
+        self._last_kwork_sent_at: float = 0.0
 
     async def run(self) -> None:
         self._register_bot_commands()
@@ -163,7 +166,16 @@ class LeadBot:
         4. Генерирует отклик, сохраняет черновик
         5. Отправляет уведомление с кнопкой (без текста отклика в теле)
         """
-        # 1. Проверка свежести сообщения (макс 10 минут)
+        # 1. Rate limit: не чаще 1 Kwork-уведомления в 10 минут
+        elapsed_since_last = time.monotonic() - self._last_kwork_sent_at
+        if self._last_kwork_sent_at > 0 and elapsed_since_last < 600:
+            LOGGER.info(
+                "Kwork rate limit: skipping (%.0f сек прошло, нужно 600)",
+                elapsed_since_last,
+            )
+            return
+
+        # 2. Проверка свежести сообщения (макс 10 минут)
         if message.date:
             msg_date = message.date.replace(tzinfo=timezone.utc) if message.date.tzinfo is None else message.date
             now = datetime.now(timezone.utc)
@@ -268,7 +280,8 @@ class LeadBot:
                 link_preview=False,
                 buttons=buttons,
             )
-            LOGGER.info("Sent Kwork notification with button for project %s", project_id)
+            self._last_kwork_sent_at = time.monotonic()
+            LOGGER.info("Sent Kwork notification with button for project %s (rate limit reset)", project_id)
         except Exception as send_err:
             LOGGER.warning("Failed to send Kwork notification with button: %s", send_err)
 
@@ -505,7 +518,123 @@ class LeadBot:
         if not self.storage.record_or_should_retry(lead):
             return  # Уже был отправлен
 
-        await self._queue.put((lead, source))
+        # Если в сообщении есть Telegram-контакт — запускаем авторассылку
+        contacts = extract_contacts(text)
+        tg_usernames = [c for c in contacts if c.startswith('@')]
+        if tg_usernames:
+            asyncio.create_task(
+                self._handle_telegram_lead(source, message, lead, tg_usernames)
+            )
+        else:
+            await self._queue.put((lead, source))
+
+    async def _handle_telegram_lead(
+        self,
+        source: Source,
+        message: Message,
+        lead: LeadRecord,
+        usernames: list[str],
+    ) -> None:
+        """
+        Обрабатывает лид с Telegram-контактом:
+        1. Проверяет юзернейм через Telethon
+        2. Генерирует короткий текст отклика
+        3. Отправляет DM (только если человек может получать сообщения)
+        4. Отправляет уведомление админу с кнопкой "в личку"
+        """
+        username = usernames[0]  # берём первый найденный юзернейм
+        clean_name = username.lstrip('@')
+
+        # 1. Проверяем юзернейм через Telethon
+        try:
+            entity = await self.user_client.get_entity(username)
+        except Exception as exc:
+            LOGGER.info("Telegram contact %s does not exist or unreachable: %s", username, exc)
+            return
+
+        # 2. Проверяем, что это пользователь (не канал/бот)
+        if not isinstance(entity, User):
+            LOGGER.info("Telegram contact %s is not a user, skipping", username)
+            return
+
+        if entity.bot:
+            LOGGER.info("Telegram contact %s is a bot, skipping", username)
+            return
+
+        # 3. Генерируем короткий текст отклика
+        profile = load_profile()
+        if not profile:
+            LOGGER.warning("Profile is empty, cannot generate offer text")
+            return
+
+        title = lead.text.split('\n')[0][:100] if lead.text else "Проект"
+        offer_text = await generate_telegram_offer_text(
+            title,
+            lead.text,
+            profile,
+            api_key=self._openrouter_api_key,
+            model=self._openrouter_model,
+            ai_basic_url=self._ai_basic_url,
+        )
+        if not offer_text:
+            LOGGER.warning("Failed to generate offer text for %s", username)
+            return
+
+        # 4. Отправляем DM: сначала текст поста, потом отклик
+        try:
+            # Сначала отправляем оригинальное сообщение (с сокращением)
+            original_text = lead.text[:3000]
+            await self.user_client.send_message(entity, original_text)
+            await asyncio.sleep(0.5)
+            # Потом текст отклика
+            await self.user_client.send_message(entity, offer_text)
+            LOGGER.info("Sent DM to %s (original + offer)", username)
+
+            # Помечаем как отправленное
+            self.storage.mark_notified(lead.source, lead.message_id)
+
+            # 5. Отправляем уведомление админу с кнопкой "в личку"
+            body = format_lead(source, lead)
+            body += (
+                f"\n\n✅ <b>Автоотправлено в личку</b>: @{html.escape(clean_name)}\n"
+                f"<i>{html.escape(offer_text[:200])}…</i>"
+            )
+            buttons = [[Button.url("👤 В личку", f"https://t.me/{clean_name}")]]
+            await self.bot_client.send_message(
+                self._admin_chat_id,
+                body,
+                parse_mode="html",
+                link_preview=False,
+                buttons=buttons,
+            )
+            LOGGER.info("Sent notification with button for DM to %s", username)
+
+        except RPCError as exc:
+            # Пользователь не может получать сообщения (приватность, блокировка)
+            error_msg = str(exc)
+            LOGGER.info("Cannot send DM to %s: %s", username, error_msg)
+
+            # Отправляем уведомление, что отклик не отправился
+            body = format_lead(source, lead)
+            body += (
+                f"\n\n❌ <b>Не удалось отправить в личку</b>: @{html.escape(clean_name)}\n"
+                f"Причина: {html.escape(error_msg[:100])}\n"
+                f"Кнопка для ручной отправки:"
+            )
+            buttons = [[Button.url("👤 Написать", f"https://t.me/{clean_name}")]]
+            try:
+                await self.bot_client.send_message(
+                    self._admin_chat_id,
+                    body,
+                    parse_mode="html",
+                    link_preview=False,
+                    buttons=buttons,
+                )
+            except Exception:
+                pass
+
+        except Exception as exc:
+            LOGGER.error("Unexpected error sending DM to %s: %s", username, exc)
 
     async def _wait_until_stopped(self) -> None:
         stop_event = asyncio.Event()
