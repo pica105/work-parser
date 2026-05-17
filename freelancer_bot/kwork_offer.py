@@ -283,6 +283,7 @@ async def generate_offer_text(
     profile_text: str,
     api_key: str = "",
     model: str = "openai/gpt-4o-mini",
+    ai_basic_url: str = "https://openrouter.ai/api/v1/chat/completions",
 ) -> Optional[str]:
     """Generate offer body text via OpenRouter API. Returns only the body text."""
     if not api_key:
@@ -295,11 +296,11 @@ async def generate_offer_text(
         "------\n"
         "СТИЛЬ: Пиши развёрнуто (1400-1700 символов), 4-5 абзацев, "
         "каждый абзац по 2-4 предложения. Не делай слишком короткие абзацы.\n"
-        "Используй 2-3 emoji. В каждом абзаце используй факты из профиля.\n"
+        "До 10 emoji. В каждом абзаце используй факты из профиля.\n"
         "Тон: уверенный, деловой, без излишней сухости, с наглостью.\n"
         "------\n"
         "ЗАПРЕТЫ (строго): приветствия, обращения, имена, возраст, "
-        "английские слова, названия библиотек и технологий"
+        "английские слова, названия библиотек и технологий, литературная лексика"
     )
 
     user_prompt = (
@@ -409,26 +410,35 @@ async def generate_offer_text(
         "Отправь только готовый текст отклика."
     )
 
+    payload = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
+    }
+    payload["provider"] = {
+        "order": ["Azure"],
+        "allow_fallbacks": True,
+    }
     try:
-        with OpenRouter(
-        api_key=api_key,
-        ) as client:
-            response = await client.chat.send(
-                model=model,
-                messages=[
-                {
-                    "role": "system",
-                    "content": system_prompt
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                url=ai_basic_url,
+                headers={
+                    "Authorization": f"Bearer {api_key.strip()}",
+                    "Content-Type": "application/json",
                 },
-                {
-                    "role": "user",
-                    "content": user_prompt
-                }
-                ]
+                json=payload,
+                timeout=60.0,
             )
-        return str(response.choices[0].message.content)
+            response.raise_for_status()  # кидает ошибку если status != 200
+            data = response.json()
+            return data["choices"][0]["message"]["content"]
     except Exception as e:
+        print(f"Ошибка: {e}")
         return None
+
 
 
 def _generate_boundary() -> str:

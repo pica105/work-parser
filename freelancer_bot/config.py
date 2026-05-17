@@ -45,6 +45,7 @@ class RuntimeConfig:
     kwork_rorssqihek: str
     openrouter_api_key: str
     openrouter_model: str
+    ai_basic_url: str
     kwork_criteria: list[str]
 
     @classmethod
@@ -95,5 +96,6 @@ class RuntimeConfig:
         kwork_rorssqihek=os.getenv("KWORK_RORSSQIHEK", ""),
         openrouter_api_key=os.getenv("OPENROUTER_API_KEY", ""),
         openrouter_model=os.getenv("OPENROUTER_MODEL", "openai/gpt-4o-mini"),
+        ai_basic_url=os.getenv("AI_BASIC_URL", "https://openrouter.ai/api/v1/chat/completions"),
         kwork_criteria=_parse_kwork_criteria(os.getenv("KWORK_CRITERIA", "")),
         )
