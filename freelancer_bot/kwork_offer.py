@@ -413,7 +413,7 @@ async def generate_offer_text(
         with OpenRouter(
         api_key=api_key,
         ) as client:
-            response = client.chat.send(
+            response = await client.chat.send(
                 model=model,
                 messages=[
                 {
