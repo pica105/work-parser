@@ -106,7 +106,7 @@ class LeadBot:
         self._kwork_handle = "@freelance_dev_work"
         self._openrouter_api_key = config.openrouter_api_key
         self._openrouter_model = config.openrouter_model
-        self._ai_basic_url = config.openrouter_ai_basic_url
+        self._ai_basic_url = config.ai_basic_url
         self._kwork_offered: set[str] = set()
 
     async def run(self) -> None:
