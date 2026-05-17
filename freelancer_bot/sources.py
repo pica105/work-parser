@@ -54,7 +54,6 @@ SOURCES: list[Source] = [
     Source("@frilanser_vacansii", "ФРИЛАНСЕР: удалённая работа", "задачи для исполнителей, есть IT и backend"),
     Source("@Koteyka_Freelancer", "Фриланс Котики", "живое сообщество с заказами, есть техспецы"),
     Source("@frilanc", "Фриланс удалёнка работа", "чат обмена откликами, быстрые перехваты задач"),
-    Source("@freelance_birzha", "Freelance Биржа", "проекты с хорошими бюджетами, разработка и IT"),
     Source("@habr_career", "Habr Career Jobs", "вакансии Хабр Карьера, remote и фриланс"),
     Source("@dou_jobs", "DOU Jobs", "DOU.ua: dev, DevOps, backend позиции"),
     # ── Международные (EN) ──
