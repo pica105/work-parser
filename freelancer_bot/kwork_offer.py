@@ -7,7 +7,6 @@ import re
 import string
 from pathlib import Path
 from typing import Optional
-from openrouter import OpenRouter
 
 import httpx
 from telethon.tl.custom.message import Message
